@@ -66,18 +66,19 @@ OPTIONS_NOT_ATTRIBUTES = (
     'url_target',
     'link_attribute_transform',
     'link_text_transform',
+    'html_escape_non_entities',
 )
 
-HTML_ENTITIES = {
-  '&': '&amp;',
-  '>': '&gt;',
-  '<': '&lt;',
-  '"': '&quot;',
-  "'": '&#39;',
-}
+HTML_ENTITIES = [
+    { 'from': '&', 'to': '&amp;' },
+    { 'from': '>', 'to': '&gt;' },
+    { 'from': '<', 'to': '&lt;' },
+    { 'from': "'", 'to': '&#39;' },
+    { 'from': '"', 'to': '&quot;' },
+]
 
 BOOLEAN_ATTRIBUTES = (
-    'disabled', 
+    'disabled',
     'readonly',
     'multiple',
     'checked',
@@ -118,20 +119,34 @@ class Autolink(object):
         if not options.get('suppress_no_follow', False):
             options['html_attrs']['rel'] = "nofollow"
 
-        entities.sort(key = lambda entity: entity['indices'][0], reverse = True)
+        entities.sort(key = lambda entity: entity['indices'][0], reverse = False)
         chars = self.text
+        result = ""
+        index = 0
 
         for entity in entities:
-            if 'url' in entity:
-                chars = self._link_to_url(entity, chars, options)
-            elif 'hashtag' in entity:
-                chars = self._link_to_hashtag(entity, chars, options)
-            elif 'screen_name' in entity:
-                chars = self._link_to_screen_name(entity, chars, options)
-            elif 'cashtag' in entity:
-                chars = self._link_to_cashtag(entity, chars, options)
+            if options.get('html_escape_non_entities', False):
+                result += self._html_escape(chars[index:entity['indices'][0]])
+            else:
+                result += chars[index:entity['indices'][0]]
 
-        return chars
+            if 'url' in entity:
+                result += self._link_to_url(entity, chars, options)
+            elif 'hashtag' in entity:
+                result += self._link_to_hashtag(entity, chars, options)
+            elif 'screen_name' in entity:
+                result += self._link_to_screen_name(entity, chars, options)
+            elif 'cashtag' in entity:
+                result += self._link_to_cashtag(entity, chars, options)
+
+            index = entity['indices'][1]
+
+        if options.get('html_escape_non_entities', False):
+            result += self._html_escape(chars[index:])
+        else:
+            result += chars[index:]
+
+        return result
 
     def auto_link(self, options = {}):
         """
@@ -158,6 +173,7 @@ class Autolink(object):
         @url_target                 the value for target attribute on URL links.
         @link_attribute_transform   function to modify the attributes of a link based on the entity. called with |entity, attributes| params, and should modify the attributes hash.
         @link_text_transform        function to modify the text of a link based on the entity. called with (entity, text) params, and should return a modified text.
+        @html_escape_non_entities   html escape special characters outside of entities
         """
         return self.auto_link_entities(self.extractor.extract_entities_with_indices({'extract_url_without_protocol': False}), options)
 
@@ -179,6 +195,7 @@ class Autolink(object):
         @text_with_symbol_tag       tag to apply around text part in username / hashtag / cashtag links
         @link_attribute_transform   function to modify the attributes of a link based on the entity. called with (entity, attributes) params, and should modify the attributes hash.
         @link_text_transform        function to modify the text of a link based on the entity. called with (entity, text) params, and should return a modified text.
+        @html_escape_non_entities   html escape special characters outside of entities
         """
         return self.auto_link_entities(self.extractor.extract_mentions_or_lists_with_indices(), options)
 
@@ -196,6 +213,7 @@ class Autolink(object):
         @text_with_symbol_tag       tag to apply around text part in username / hashtag / cashtag links
         @link_attribute_transform   function to modify the attributes of a link based on the entity. called with (entity, attributes) params, and should modify the attributes hash.
         @link_text_transform        function to modify the text of a link based on the entity. called with (entity, text) params, and should return a modified text.
+        @html_escape_non_entities   html escape special characters outside of entities
         """
         return self.auto_link_entities(self.extractor.extract_hashtags_with_indices(), options)
 
@@ -213,6 +231,7 @@ class Autolink(object):
         @text_with_symbol_tag       tag to apply around text part in username / hashtag / cashtag links
         @link_attribute_transform   function to modify the attributes of a link based on the entity. called with (entity, attributes) params, and should modify the attributes hash.
         @link_text_transform        function to modify the text of a link based on the entity. called with (entity, text) params, and should return a modified text.
+        @html_escape_non_entities   html escape special characters outside of entities
         """
         return self.auto_link_entities(self.extractor.extract_cashtags_with_indices(), options)
 
@@ -231,13 +250,15 @@ class Autolink(object):
         @url_target                 the value for target attribute on URL links.
         @link_attribute_transform   function to modify the attributes of a link based on the entity. called with (entity, attributes) params, and should modify the attributes hash.
         @link_text_transform        function to modify the text of a link based on the entity. called with (entity, text) params, and should return a modified text.
+        @html_escape_non_entities   html escape special characters outside of entities
         """
         return self.auto_link_entities(self.extractor.extract_urls_with_indices({'extract_url_without_protocol': False}), options)
 
     # begin private methods
     def _html_escape(self, text):
-        for char in HTML_ENTITIES:
-            text = text.replace(char, HTML_ENTITIES[char])
+        for entity in HTML_ENTITIES:
+            text = text.replace(entity['from'], entity['to'])
+
         return text
 
     def _extract_html_attrs_from_options(self, options = {}):
@@ -281,8 +302,7 @@ class Autolink(object):
         else:
             link_text = self._html_escape(url)
 
-        link = self._link_to_text(entity, link_text, href, html_attrs, options)
-        return chars[:entity['indices'][0]] + link + chars[entity['indices'][1]:]
+        return self._link_to_text(entity, link_text, href, html_attrs, options)
 
     def _link_url_with_entity(self, entity, options = {}):
         """
@@ -365,8 +385,7 @@ class Autolink(object):
             'title':    u'#%s' % hashtag,
         }
 
-        link = self._link_to_text_with_symbol(entity, hashchar, hashtag, href, html_attrs, options)
-        return chars[:entity['indices'][0]] + link + chars[entity['indices'][1]:]
+        return self._link_to_text_with_symbol(entity, hashchar, hashtag, href, html_attrs, options)
 
     def _link_to_cashtag(self, entity, chars, options = {}):
         dollar = chars[entity['indices'][0]]
@@ -380,8 +399,7 @@ class Autolink(object):
         }
         html_attrs.update(options.get('html_attrs', {}))
 
-        link = self._link_to_text_with_symbol(entity, dollar, cashtag, href, html_attrs, options)
-        return chars[:entity['indices'][0]] + link + chars[entity['indices'][1]:]
+        return self._link_to_text_with_symbol(entity, dollar, cashtag, href, html_attrs, options)
 
     def _link_to_screen_name(self, entity, chars, options = {}):
         name = u'%s%s' % (entity['screen_name'], entity.get('list_slug') or '')
@@ -401,8 +419,7 @@ class Autolink(object):
             href = options.get('username_url_transform', lambda sn: u'%s%s' % (options.get('username_url_base'), sn))(name)
             html_attrs['class'] = options.get('username_class')
 
-        link = self._link_to_text_with_symbol(entity, at, chunk, href, html_attrs, options)
-        return chars[:entity['indices'][0]] + link + chars[entity['indices'][1]:]
+        return self._link_to_text_with_symbol(entity, at, chunk, href, html_attrs, options)
 
     def _link_to_text_with_symbol(self, entity, symbol, text, href, attributes = {}, options = {}):
         tagged_symbol = u'<%s>%s</%s>' % (options.get('symbol_tag'), symbol, options.get('symbol_tag')) if options.get('symbol_tag') else symbol

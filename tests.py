@@ -123,6 +123,23 @@ sys.stdout.write('\nTesting Autolink\n')
 sys.stdout.flush()
 
 autolink_options = {'suppress_no_follow': True}
+autolink_options_escape = {'suppress_no_follow': True,'html_escape_non_entities': True}
+
+tests = autolink_tests.get('tests')
+tests['htmlescape'] = [
+    {
+        'text': "&<>\"'",
+        'escape': False,
+        'expected': "&<>\"'",
+        'description': "Don't escape non-entities by default",
+    },
+    {
+        'text': "&<>\"'",
+        'escape': True,
+        'expected': "&amp;&lt;&gt;&quot;&#39;",
+        'description': "Escape non-entities",
+    }
+]
 
 for section in autolink_tests.get('tests'):
     sys.stdout.write('\nTesting Autolink: %s\n' % section)
@@ -146,6 +163,9 @@ for section in autolink_tests.get('tests'):
             assert_equal_without_attribute_order(autolink.auto_link_usernames_or_lists(autolink_options), test)
         elif section == 'json':
             assert_equal_without_attribute_order(autolink.auto_link_with_json(json.loads(test.get('json')), autolink_options), test)
+        elif section == 'htmlescape':
+            assert_equal(autolink.auto_link(test.get('escape') and autolink_options_escape or autolink_options), test)
+
 
 # hit_highlighting section
 hit_highlighting_file = open(os.path.join('twitter-text-conformance', 'hit_highlighting.yml'), 'r')
