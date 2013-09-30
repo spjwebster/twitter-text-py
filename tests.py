@@ -40,20 +40,40 @@ def error(text):
     return (u'\033[91m%s\033[0m\n' % text).encode('utf-8')
 
 attempted = 0
+passed = 0
+failed = 0
 
 def assert_equal_without_attribute_order(result, test, failure_message = None):
-    global attempted
+    global attempted, passed, failed
     attempted += 1
     # Beautiful Soup sorts the attributes for us so we can skip all the hoops the ruby version jumps through
-    assert BeautifulSoup(result) == BeautifulSoup(test.get('expected')), error(u'Test %d Failed: %s' % (attempted, test.get('description')))
-    sys.stdout.write(success(u'Test %d Passed: %s' % (attempted, test.get('description'))))
+    try:
+        assert BeautifulSoup(result) == BeautifulSoup(test.get('expected')), error(u'Test %d Failed: %s' % (attempted, test.get('description')))
+        passed += 1
+        sys.stdout.write(success(u'Test %d Passed: %s' % (attempted, test.get('description'))))
+    except:
+        sys.stdout.write(error(u'Test %d Failed: %s' % (attempted, test.get('description'))))
+        sys.stdout.write(error(u' - with: %s' % test.get('text')))
+        sys.stdout.write(error(u' - expected: %s' % test.get('expected')))
+        sys.stdout.write(error(u' - got: %s' % result))
+        failed += 1
+
     sys.stdout.flush()
 
 def assert_equal(result, test):
-    global attempted
+    global attempted, passed, failed
     attempted += 1
-    assert result == test.get('expected'), error(u'\nTest %d Failed: %s%s' % (attempted, test.get('description'), u'\n%s' % test.get('hits') if test.get('hits') else ''))
-    sys.stdout.write(success(u'Test %d Passed: %s' % (attempted, test.get('description'))))
+    try:
+        assert result == test.get('expected'), error(u'\nTest %d Failed: %s%s' % (attempted, test.get('description'), u'\n%s' % test.get('hits') if test.get('hits') else ''))
+        passed += 1
+        sys.stdout.write(success(u'Test %d Passed: %s' % (attempted, test.get('description'))))
+    except:
+        sys.stdout.write(error(u'Test %d Failed: %s' % (attempted, test.get('description'))))
+        sys.stdout.write(error(u' - with: %s' % test.get('text')))
+        sys.stdout.write(error(u' - expected: %s' % test.get('expected')))
+        sys.stdout.write(error(u' - got: %s' % result))
+        failed += 1
+
     sys.stdout.flush()
 
 # extractor section
@@ -175,6 +195,6 @@ if validate_tests:
             elif section == 'urls':
                 assert_equal(validator.valid_url(), test)
 
-sys.stdout.write(u'\033[0m-------\n\033[92m%d tests passed.\033[0m\n' % attempted)
+sys.stdout.write(u'\033[0m-------\n\033[92m%d of %d tests passed (%d failed) \033[0m\n' % (passed, attempted, failed))
 sys.stdout.flush()
-sys.exit(os.EX_OK)
+sys.exit(passed == attempted and os.EX_OK or os.EX_SOFTWARE)
